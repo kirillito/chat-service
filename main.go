@@ -1,43 +1,62 @@
+/*
+Package chat-service is a simple chat service
+*/
 package main
 
 import (
+	"fmt"
 	"encoding/json"
 	"io/ioutil"
 	"net"
 	"os"
+	"strconv"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
+// ChatMessage is a structure for storing message data
 type ChatMessage struct {
 	msg string
 	id  int
 }
 
+// User is a structure for storing user data
 type User struct {
 	id   int
 	name string
 }
 
-type Config struct {
+// Config is a structure for storing service configuration data
+type Configuration struct {
 	Host     string `json:"host"`
 	Port     string `json:"port"`
 	ConnType string `json:"connType"`
 	LogPath  string `json:"logFilePath"`
 }
 
-// Global vars
-var state = []User{}
-var userNameList = map[string]int{} // map userNames to user ID
-var msgHistory []string             // keep last 30 messages in mem
+type HttpAPI struct {
+	broker				*Broker
+	configuration	Configuration
+}
+
+var state = []User{}								// Array of current users in the chat
+var userNameList = map[string]int{} // Map userNames to user ID
+var msgHistory []string             // Keep last 30 messages in memory
 
 func main() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
 	cfg := configureService()
 
-	// Listen for incoming tcp connections ie: telnet
+	// system user used for notifications
+	createNewUser("system")
+
+	// create and start our primary chatroom
+	b := CreateMessageBroker()
+	go b.Start()
+
+	// Listen for incoming tcp connections, i.e. telnet
 	ln, err := net.Listen(cfg.ConnType, cfg.Host+":"+cfg.Port)
 
 	if err != nil {
@@ -45,7 +64,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	defer ln.Close()
+	defer ln.Close();
 
 	// handle new incoming connections
 	for {
@@ -54,15 +73,17 @@ func main() {
 			log.Fatal().Err(err).Msg("Error handling connection")
 		}
 
-		go handleConnection(conn, cfg)
+		userId := createNewUser("")
+
+		go handleConnection(conn, userId, cfg)
 	}
 }
 
 // read configuration from file
-func configureService() Config {
+func configureService() Configuration {
 	byteVal, _ := ioutil.ReadFile("./config.json")
 
-	var cfg Config
+	var cfg Configuration
 	if err := json.Unmarshal(byteVal, &cfg); err != nil {
 		log.Fatal().
 			Err(err).
@@ -74,6 +95,36 @@ func configureService() Config {
 	return cfg
 }
 
-func handleConnection(conn net.Conn, cfg Config) {
+func handleConnection(conn net.Conn, userId int, cfg Configuration) {
+	remoteAddress := conn.RemoteAddr().String()
+	userName = getUserNameById(userId)
+	fmt.Printf("Client id: %d with username [%s] connected from %s\n", userId, , remoteAddress)
 
+	msg : fmt.Sprintf("%s has joined", userName)
+	
+}
+
+// createNewUser creates new user and returns its id
+func createNewUser(userName string) int {
+	newUser := User {
+		name: userName, 
+		id: len(state) 
+	}
+	state = append(state, newUser)
+
+	userNameList[newUser.name] = newUser.id
+
+	return newUser.id
+}
+
+// look up username
+func getUserNameById(id int) string {
+	userName := state[id].name
+
+	if userName != "" {
+		return userName
+	}
+
+	userName = "Anonymous" + strconv.Itoa(id)
+	return userName
 }
